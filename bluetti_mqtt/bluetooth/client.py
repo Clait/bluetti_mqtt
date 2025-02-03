@@ -81,7 +81,7 @@ class BluetoothClient:
         except BleakDeviceNotFoundError:
             logging.debug(f'Error connecting to device {self.address}: Not found')
         except (BleakError, EOFError, asyncio.TimeoutError) as e:
-            if "InProgress" in str(e):
+            if "InProgress" in str(e) or "Operation already in progress" in str(e):
                 logging.error("Connection is already in progress. Waiting briefly before retrying.")
                 await asyncio.sleep(2)
                 # Optionally retry here
