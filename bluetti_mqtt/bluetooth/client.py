@@ -80,9 +80,15 @@ class BluetoothClient:
             logging.info(f'Connected to device: {self.address}')
         except BleakDeviceNotFoundError:
             logging.debug(f'Error connecting to device {self.address}: Not found')
-        except (BleakError, EOFError, asyncio.TimeoutError):
-            logging.exception(f'Error connecting to device {self.address}:')
-            await asyncio.sleep(1)
+        except (BleakError, EOFError, asyncio.TimeoutError) as e:
+            if "InProgress" in str(e):
+                logging.error("Connection is already in progress. Waiting briefly before retrying.")
+                await asyncio.sleep(2)
+                # Optionally retry here
+                # await self._connect()
+            else:
+                logging.exception(f'Error connecting to device {self.address}:')
+                await asyncio.sleep(1)
 
     async def _get_name(self):
         """Get device name, which can be parsed for type"""
