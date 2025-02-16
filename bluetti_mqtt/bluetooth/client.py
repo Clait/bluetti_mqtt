@@ -3,7 +3,7 @@ from enum import Enum, auto, unique
 import logging
 import time
 from typing import Optional, Union
-from bleak import BleakClient, BleakError
+from bleak import BleakClient, BleakError, discover
 from bleak.exc import BleakDeviceNotFoundError
 from bluetti_mqtt.core import DeviceCommand
 from .exc import BadConnectionError, ModbusError, ParseError
@@ -95,9 +95,9 @@ class BluetoothClient:
     
             try:
                 self.logger.info(f"Scanning for device {self.address}...")
-                # Replace the following line with the actual scanning logic
-                is_device_available = await self.client.scan_for_device(self.address)
-                if not is_device_available:
+                devices = await discover()
+                device_found = any(d.address == self.address for d in devices)
+                if not device_found:
                     self.logger.error(f"Device with address {self.address} not found. Ensure it is powered on and in range.")
                     retries += 1
                     await asyncio.sleep(30)  # Longer delay for retry if device is not found
