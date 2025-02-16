@@ -1,7 +1,7 @@
 import asyncio
 from enum import Enum, auto, unique
 import logging
-from typing import Union
+from typing import Optional, Union
 from bleak import BleakClient, BleakError
 from bleak.exc import BleakDeviceNotFoundError
 from bluetti_mqtt.core import DeviceCommand
@@ -23,10 +23,15 @@ class BluetoothClient:
     NOTIFY_UUID = '0000ff01-0000-1000-8000-00805f9b34fb'
     DEVICE_NAME_UUID = '00002a00-0000-1000-8000-00805f9b34fb'
 
+    name: Union[str, None]
+    current_command: DeviceCommand
+    notify_future: asyncio.Future
+    notify_response: bytearray
+
     def __init__(self, address: str, name: Optional[str] = None):
         self.address = address
-        self.name = name
         self.state = ClientState.NOT_CONNECTED
+        self.name = name
         self.client = BleakClient(self.address)
         self.command_queue = asyncio.Queue()
         self.notify_future = None
