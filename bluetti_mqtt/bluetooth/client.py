@@ -1,6 +1,7 @@
 import asyncio
 from enum import Enum, auto, unique
 import logging
+import time
 from typing import Optional, Union
 from bleak import BleakClient, BleakError
 from bleak.exc import BleakDeviceNotFoundError
@@ -33,6 +34,8 @@ class BluetoothClient:
         self.state = ClientState.NOT_CONNECTED
         self.name = name
         self.client = BleakClient(self.address)
+        self.last_warning_time = 0
+        self.MAX_RETRIES = 5
         self.command_queue = asyncio.Queue()
         self.notify_future = None
         self.loop = asyncio.get_running_loop()
@@ -81,22 +84,34 @@ class BluetoothClient:
                 await self.client.disconnect()
                 
     async def _connect(self):
-        if self.client.is_connected:
-            self.logger.warning(f"Client {self.address} is already connected. Skipping connection attempt.")
-            return
-        try:
-            self.logger.info(f"Attempting to connect to {self.name or 'Unknown'} ({self.address})...")
-            await self.client.connect()
-            self.logger.info(f"Successfully connected to {self.name or 'Unknown'} ({self.address}).")
-        except BleakDBusError as e:
-            if "InProgress" in str(e):
-                self.logger.warning(f"Connection already in progress for {self.address}. Retrying later.")
-            else:
-                self.logger.error(f"BleakDBusError for {self.address}: {e}")
-            await asyncio.sleep(10)  # Retry delay
-        except Exception as e:
-            self.logger.error(f"Unexpected error connecting to {self.address}: {e}")
-            await asyncio.sleep(10)  # Retry delay
+        retries = 0
+        while retries < self.MAX_RETRIES:
+            # Check if the client is already connected
+            if self.client.is_connected:
+                current_time = time.time()
+                if current_time - self.last_warning_time > 5:  # Throttle warnings to 5 seconds
+                    self.logger.warning(f"Client {self.address} is already connected. Skipping connection attempt.")
+                    self.last_warning_time = current_time
+                return  # Exit retry loop if connected
+
+            try:
+                self.logger.info(f"Attempting to connect to {self.address}...")
+                await self.client.connect()
+                self.logger.info(f"Successfully connected to {self.address}.")
+                return  # Exit loop on successful connection
+            except BleakDBusError as e:
+                if "InProgress" in str(e):
+                    self.logger.warning(f"Connection already in progress for {self.address}. Retrying later.")
+                else:
+                    self.logger.error(f"BleakDBusError for {self.address}: {e}")
+                retries += 1
+                await asyncio.sleep(10)  # Retry delay
+            except Exception as e:
+                self.logger.error(f"Unexpected error connecting to {self.address}: {e}")
+                retries += 1
+                await asyncio.sleep(10)  # Retry delay
+
+        self.logger.error(f"Exceeded maximum retries ({self.MAX_RETRIES}) for {self.address}. Connection failed.")
     
     async def _restart_discovery(self):
         """Restart the Bluetooth discovery process."""
