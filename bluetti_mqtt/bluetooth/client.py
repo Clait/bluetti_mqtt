@@ -85,12 +85,18 @@ class BluetoothClient:
                 
     async def _connect(self):
         retries = 0
+        delay = 5  # Initial retry delay in seconds
+        max_delay = 600  # Maximum delay of 10 minutes
+    
         while retries < self.MAX_RETRIES:
             if self.client.is_connected:
                 current_time = time.time()
-                if current_time - self.last_warning_time > 5:
+                if current_time - self.last_warning_time > delay:
                     self.logger.warning(f"Client {self.address} is already connected. Skipping connection attempt.")
                     self.last_warning_time = current_time
+    
+                    # Implement exponential backoff logic with cap
+                    delay = min(delay * 2, max_delay)
                 return
     
             try:
@@ -101,12 +107,15 @@ class BluetoothClient:
                 if not device_found:
                     self.logger.error(f"Device with address {self.address} not found. Ensure it is powered on and in range.")
                     retries += 1
-                    await asyncio.sleep(30)  # Longer delay for retry if device is not found
+                    await asyncio.sleep(delay)
                     continue
     
                 self.logger.info(f"Attempting to connect to {self.address}...")
                 await self.client.connect()
                 self.logger.info(f"Successfully connected to {self.address}.")
+                
+                # Reset delay after a successful connection
+                delay = 5
                 return
             except BleakDBusError as e:
                 if "InProgress" in str(e):
@@ -114,11 +123,14 @@ class BluetoothClient:
                 else:
                     self.logger.error(f"BleakDBusError for {self.address}: {e}")
                 retries += 1
-                await asyncio.sleep(10)
+                await asyncio.sleep(delay)
             except Exception as e:
                 self.logger.error(f"Unexpected error connecting to {self.address}: {e}")
                 retries += 1
-                await asyncio.sleep(10)
+                await asyncio.sleep(delay)
+    
+            # Adjust the delay for the next attempt
+            delay = min(delay * 2, max_delay)
     
         self.logger.error(f"Exceeded maximum retries ({self.MAX_RETRIES}) for {self.address}. Connection failed.")
 
