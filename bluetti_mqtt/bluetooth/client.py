@@ -17,29 +17,22 @@ class ClientState(Enum):
     COMMAND_ERROR_WAIT = auto()
     DISCONNECTING = auto()
 
-
 class BluetoothClient:
     RESPONSE_TIMEOUT = 5
     WRITE_UUID = '0000ff02-0000-1000-8000-00805f9b34fb'
     NOTIFY_UUID = '0000ff01-0000-1000-8000-00805f9b34fb'
     DEVICE_NAME_UUID = '00002a00-0000-1000-8000-00805f9b34fb'
 
-    name: Union[str, None]
-    current_command: DeviceCommand
-    notify_future: asyncio.Future
-    notify_response: bytearray
-
-    def __init__(self, address: str):
+    def __init__(self, address: str, name: Optional[str] = None):
         self.address = address
-        self.state = ClientState.NOT_CONNECTED
         self.name = name
+        self.state = ClientState.NOT_CONNECTED
         self.client = BleakClient(self.address)
         self.command_queue = asyncio.Queue()
         self.notify_future = None
         self.loop = asyncio.get_running_loop()
-        self.logger = logging.getLogger(f"BluetoothClient-{self.address}")  # Add logger here
+        self.logger = logging.getLogger(f"BluetoothClient-{self.address}")
         self.logger.info(f"Initializing BluetoothClient for {self.address} with name {self.name}")
-
 
     @property
     def is_ready(self):
