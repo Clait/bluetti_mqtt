@@ -95,7 +95,8 @@ class BluetoothClient:
     
             try:
                 self.logger.info(f"Scanning for device {self.address}...")
-                devices = await BleakScanner.discover()  # Updated to use BleakScanner.discover
+                devices = await BleakScanner.discover(timeout=10)
+                self.logger.info(f"Discovered devices: {[f'{d.name} ({d.address})' for d in devices]}")
                 device_found = any(d.address.lower() == self.address.lower() for d in devices)
                 if not device_found:
                     self.logger.error(f"Device with address {self.address} not found. Ensure it is powered on and in range.")
@@ -120,7 +121,7 @@ class BluetoothClient:
                 await asyncio.sleep(10)
     
         self.logger.error(f"Exceeded maximum retries ({self.MAX_RETRIES}) for {self.address}. Connection failed.")
-        
+
     async def _restart_discovery(self):
         """Restart the Bluetooth discovery process."""
         try:
