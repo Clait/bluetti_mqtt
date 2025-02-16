@@ -37,6 +37,7 @@ class BluetoothClient:
         self.command_queue = asyncio.Queue()
         self.notify_future = None
         self.loop = asyncio.get_running_loop()
+        self.logger = logging.getLogger(f"BluetoothClient-{self.address}")  # Add logger here
 
     @property
     def is_ready(self):
@@ -65,7 +66,7 @@ class BluetoothClient:
                 elif self.state == ClientState.DISCONNECTING:
                     await self._disconnect()
                 else:
-                    logging.warn(f'Unexpected current state {self.state}')
+                    self.logger.warning(f'Unexpected current state {self.state}')  # Use logger here
                     self.state = ClientState.NOT_CONNECTED
         finally:
             # Ensure that we disconnect
