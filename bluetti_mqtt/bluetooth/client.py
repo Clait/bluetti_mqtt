@@ -1,13 +1,12 @@
 import asyncio
 from enum import Enum, auto, unique
 import logging
-import time
-from typing import Optional, Union
-from bleak import BleakClient, BleakError, BleakScanner
+from typing import Union
+from bleak import BleakClient, BleakError
 from bleak.exc import BleakDeviceNotFoundError
 from bluetti_mqtt.core import DeviceCommand
 from .exc import BadConnectionError, ModbusError, ParseError
-from bleak.exc import BleakDBusError
+
 
 @unique
 class ClientState(Enum):
@@ -17,6 +16,7 @@ class ClientState(Enum):
     PERFORMING_COMMAND = auto()
     COMMAND_ERROR_WAIT = auto()
     DISCONNECTING = auto()
+
 
 class BluetoothClient:
     RESPONSE_TIMEOUT = 5
@@ -29,18 +29,14 @@ class BluetoothClient:
     notify_future: asyncio.Future
     notify_response: bytearray
 
-    def __init__(self, address: str, name: Optional[str] = None):
+    def __init__(self, address: str):
         self.address = address
         self.state = ClientState.NOT_CONNECTED
-        self.name = name
+        self.name = None
         self.client = BleakClient(self.address)
-        self.last_warning_time = 0
-        self.MAX_RETRIES = 5
         self.command_queue = asyncio.Queue()
         self.notify_future = None
         self.loop = asyncio.get_running_loop()
-        self.logger = logging.getLogger(f"BluetoothClient-{self.address}")
-        self.logger.info(f"Initializing BluetoothClient for {self.address} with name {self.name}")
 
     @property
     def is_ready(self):
@@ -57,103 +53,46 @@ class BluetoothClient:
     async def run(self):
         try:
             while True:
-                try:
-                    if self.state == ClientState.NOT_CONNECTED:
-                        await self._connect()
-                    elif self.state == ClientState.CONNECTED:
-                        if not self.name:
-                            await self._get_name()
-                        else:
-                            await self._start_listening()
-                    elif self.state == ClientState.READY:
-                        await self._perform_command()
-                    elif self.state == ClientState.DISCONNECTING:
-                        await self._disconnect()
+                if self.state == ClientState.NOT_CONNECTED:
+                    await self._connect()
+                elif self.state == ClientState.CONNECTED:
+                    if not self.name:
+                        await self._get_name()
                     else:
-                        self.logger.warning(f"Unexpected current state {self.state}")
-                        self.state = ClientState.NOT_CONNECTED
-                except BleakDBusError as e:
-                    self.logger.error(f"DBus error encountered: {e}. Retrying...")
-                    await asyncio.sleep(5)  # Grace period before retry
-                except Exception as e:
-                    self.logger.exception(f"Unhandled error: {e}. Exiting loop.")
-                    break
-        finally:
-            # Ensure disconnection on exit
-            if self.client and self.client.is_connected:
-                await self.client.disconnect()
-                
-    async def _connect(self):
-        retries = 0
-        delay = 5  # Initial retry delay in seconds
-        max_delay = 600  # Maximum delay of 10 minutes
-    
-        while retries < self.MAX_RETRIES:
-            if self.client.is_connected:
-                current_time = time.time()
-                if current_time - self.last_warning_time > delay:
-                    self.logger.warning(f"Client {self.address} is already connected. Skipping connection attempt.")
-                    self.last_warning_time = current_time
-    
-                    # Implement exponential backoff logic with cap
-                    delay = min(delay * 2, max_delay)
-                return
-    
-            try:
-                self.logger.info(f"Scanning for device {self.address}...")
-                devices = await BleakScanner.discover(timeout=10)
-                self.logger.info(f"Discovered devices: {[f'{d.name} ({d.address})' for d in devices]}")
-                device_found = any(d.address.lower() == self.address.lower() for d in devices)
-                if not device_found:
-                    self.logger.error(f"Device with address {self.address} not found. Ensure it is powered on and in range.")
-                    retries += 1
-                    await asyncio.sleep(delay)
-                    continue
-    
-                self.logger.info(f"Attempting to connect to {self.address}...")
-                await self.client.connect()
-                self.logger.info(f"Successfully connected to {self.address}.")
-                
-                # Reset delay after a successful connection
-                delay = 5
-                return
-            except BleakDBusError as e:
-                if "InProgress" in str(e):
-                    self.logger.warning(f"Connection already in progress for {self.address}. Retrying later.")
+                        await self._start_listening()
+                elif self.state == ClientState.READY:
+                    await self._perform_command()
+                elif self.state == ClientState.DISCONNECTING:
+                    await self._disconnect()
                 else:
-                    self.logger.error(f"BleakDBusError for {self.address}: {e}")
-                retries += 1
-                await asyncio.sleep(delay)
-            except Exception as e:
-                self.logger.error(f"Unexpected error connecting to {self.address}: {e}")
-                retries += 1
-                await asyncio.sleep(delay)
-    
-            # Adjust the delay for the next attempt
-            delay = min(delay * 2, max_delay)
-    
-        self.logger.error(f"Exceeded maximum retries ({self.MAX_RETRIES}) for {self.address}. Connection failed.")
+                    logging.warn(f'Unexpected current state {self.state}')
+                    self.state = ClientState.NOT_CONNECTED
+        finally:
+            # Ensure that we disconnect
+            if self.client:
+                await self.client.disconnect()
 
-    async def _restart_discovery(self):
-        """Restart the Bluetooth discovery process."""
+    async def _connect(self):
+        """Establish connection to the bluetooth device"""
         try:
-            from bleak import BleakScanner
-    
-            self.logger.info("Restarting Bluetooth discovery...")
-            await BleakScanner.stop()
-            await asyncio.sleep(1)  # Give time for the stop to complete
-            await BleakScanner.start()
-            self.logger.info("Bluetooth discovery restarted.")
-        except Exception as e:
-            self.logger.error(f"Failed to restart Bluetooth discovery: {e}")
+            await self.client.connect()
+            self.state = ClientState.CONNECTED
+            logging.info(f'Connected to device: {self.address}')
+        except BleakDeviceNotFoundError:
+            logging.debug(f'Error connecting to device {self.address}: Not found')
+        except (BleakError, EOFError, asyncio.TimeoutError):
+            logging.exception(f'Error connecting to device {self.address}:')
+            await asyncio.sleep(1)
 
-    async def _retry_connection(self, delay=10):
-        self.logger.info(f"Retrying connection to {self.address} in {delay} seconds...")
-        await asyncio.sleep(delay)
+    async def _get_name(self):
+        """Get device name, which can be parsed for type"""
         try:
-            await self._connect()
-        except Exception as e:
-            self.logger.error(f"Retry failed for {self.address}: {e}")
+            name = await self.client.read_gatt_char(self.DEVICE_NAME_UUID)
+            self.name = name.decode('ascii')
+            logging.info(f'Device {self.address} has name: {self.name}')
+        except BleakError:
+            logging.exception(f'Error retrieving device name {self.address}:')
+            self.state = ClientState.DISCONNECTING
 
     async def _start_listening(self):
         """Register for command response notifications"""
