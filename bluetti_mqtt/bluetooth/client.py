@@ -80,23 +80,23 @@ class BluetoothClient:
             if self.client and self.client.is_connected:
                 await self.client.disconnect()
                 
-async def _connect(self):
-    if self.client.is_connected:
-        self.logger.warning(f"Client {self.address} is already connected. Skipping connection attempt.")
-        return
-    try:
-        self.logger.info(f"Attempting to connect to {self.name or 'Unknown'} ({self.address})...")
-        await self.client.connect()
-        self.logger.info(f"Successfully connected to {self.name or 'Unknown'} ({self.address}).")
-    except BleakDBusError as e:
-        if "InProgress" in str(e):
-            self.logger.warning(f"Connection already in progress for {self.address}. Retrying later.")
-        else:
-            self.logger.error(f"BleakDBusError for {self.address}: {e}")
-        await asyncio.sleep(10)  # Retry delay
-    except Exception as e:
-        self.logger.error(f"Unexpected error connecting to {self.address}: {e}")
-        await asyncio.sleep(10)  # Retry delay
+    async def _connect(self):
+        if self.client.is_connected:
+            self.logger.warning(f"Client {self.address} is already connected. Skipping connection attempt.")
+            return
+        try:
+            self.logger.info(f"Attempting to connect to {self.name or 'Unknown'} ({self.address})...")
+            await self.client.connect()
+            self.logger.info(f"Successfully connected to {self.name or 'Unknown'} ({self.address}).")
+        except BleakDBusError as e:
+            if "InProgress" in str(e):
+                self.logger.warning(f"Connection already in progress for {self.address}. Retrying later.")
+            else:
+                self.logger.error(f"BleakDBusError for {self.address}: {e}")
+            await asyncio.sleep(10)  # Retry delay
+        except Exception as e:
+            self.logger.error(f"Unexpected error connecting to {self.address}: {e}")
+            await asyncio.sleep(10)  # Retry delay
     
     async def _restart_discovery(self):
         """Restart the Bluetooth discovery process."""
