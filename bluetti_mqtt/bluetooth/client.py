@@ -51,36 +51,35 @@ class BluetoothClient:
     async def perform_nowait(self, cmd: DeviceCommand):
         await self.command_queue.put((cmd, None))
 
-async def run(self):
-    try:
-        while True:
-            try:
-                if self.state == ClientState.NOT_CONNECTED:
-                    await self._connect()
-                elif self.state == ClientState.CONNECTED:
-                    if not self.name:
-                        await self._get_name()
+    async def run(self):
+        try:
+            while True:
+                try:
+                    if self.state == ClientState.NOT_CONNECTED:
+                        await self._connect()
+                    elif self.state == ClientState.CONNECTED:
+                        if not self.name:
+                            await self._get_name()
+                        else:
+                            await self._start_listening()
+                    elif self.state == ClientState.READY:
+                        await self._perform_command()
+                    elif self.state == ClientState.DISCONNECTING:
+                        await self._disconnect()
                     else:
-                        await self._start_listening()
-                elif self.state == ClientState.READY:
-                    await self._perform_command()
-                elif self.state == ClientState.DISCONNECTING:
-                    await self._disconnect()
-                else:
-                    self.logger.warning(f"Unexpected current state {self.state}")
-                    self.state = ClientState.NOT_CONNECTED
-            except BleakDBusError as e:
-                self.logger.error(f"DBus error encountered: {e}. Retrying...")
-                await asyncio.sleep(5)  # Grace period before retry
-            except Exception as e:
-                self.logger.exception(f"Unhandled error: {e}. Exiting loop.")
-                break
-    finally:
-        # Ensure disconnection on exit
-        if self.client and self.client.is_connected:
-            await self.client.disconnect()
-
-###
+                        self.logger.warning(f"Unexpected current state {self.state}")
+                        self.state = ClientState.NOT_CONNECTED
+                except BleakDBusError as e:
+                    self.logger.error(f"DBus error encountered: {e}. Retrying...")
+                    await asyncio.sleep(5)  # Grace period before retry
+                except Exception as e:
+                    self.logger.exception(f"Unhandled error: {e}. Exiting loop.")
+                    break
+        finally:
+            # Ensure disconnection on exit
+            if self.client and self.client.is_connected:
+                await self.client.disconnect()
+                
 async def _connect(self):
     if self.client.is_connected:
         self.logger.warning(f"Client {self.address} is already connected. Skipping connection attempt.")
@@ -119,7 +118,7 @@ async def _connect(self):
             await self._connect()
         except Exception as e:
             self.logger.error(f"Retry failed for {self.address}: {e}")
-###
+
     async def _start_listening(self):
         """Register for command response notifications"""
         try:
