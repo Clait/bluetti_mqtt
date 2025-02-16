@@ -89,40 +89,80 @@ class BluetoothClient:
     #         else:
     #             logging.exception(f'Error connecting to device {self.address}:')
     #             await asyncio.sleep(1)
+    # async def _connect(self):
+    #     try:
+    #         self.logger.info(f"Attempting to connect to device {self.name} ({self.address})...")
+    #         await self.client.connect()
+    #         self.logger.info(f"Successfully connected to {self.name} ({self.address}).")
+    #     except BleakDBusError as e:
+    #         if "No discovery started" in str(e):
+    #             self.logger.error(
+    #                 f"BleakDBusError: Device discovery not started for {self.address}. Ensure the device is discoverable."
+    #             )
+    #         else:
+    #             self.logger.error(f"BleakDBusError while connecting to {self.address}: {e}")
+    #         await self._retry_connection()
+    #     except Exception as e:
+    #         self.logger.error(f"Unexpected error while connecting to {self.address}: {e}")
+    #         await self._retry_connection()
+    
+    # async def _retry_connection(self, delay=10):
+    #     self.logger.warning(f"Retrying connection to {self.address} after {delay} seconds.")
+    #     await asyncio.sleep(delay)
+    #     try:
+    #         await self._connect()
+    #     except Exception as e:
+    #         self.logger.error(f"Failed to reconnect to {self.address}: {e}")
+    #     async def _get_name(self):
+    #         """Get device name, which can be parsed for type"""
+    #         try:
+    #             name = await self.client.read_gatt_char(self.DEVICE_NAME_UUID)
+    #             self.name = name.decode('ascii')
+    #             logging.info(f'Device {self.address} has name: {self.name}')
+    #         except BleakError:
+    #             logging.exception(f'Error retrieving device name {self.address}:')
+    #             self.state = ClientState.DISCONNECTING
+###
     async def _connect(self):
         try:
-            self.logger.info(f"Attempting to connect to device {self.name} ({self.address})...")
+            self.logger.info(f"Attempting to connect to {self.name} ({self.address})...")
             await self.client.connect()
             self.logger.info(f"Successfully connected to {self.name} ({self.address}).")
         except BleakDBusError as e:
             if "No discovery started" in str(e):
-                self.logger.error(
-                    f"BleakDBusError: Device discovery not started for {self.address}. Ensure the device is discoverable."
+                self.logger.warning(
+                    f"No discovery started for {self.address}. Restarting discovery and retrying connection."
                 )
+                await self._restart_discovery()
             else:
-                self.logger.error(f"BleakDBusError while connecting to {self.address}: {e}")
+                self.logger.error(f"BleakDBusError for {self.address}: {e}")
             await self._retry_connection()
         except Exception as e:
-            self.logger.error(f"Unexpected error while connecting to {self.address}: {e}")
+            self.logger.error(f"Unexpected error connecting to {self.address}: {e}")
             await self._retry_connection()
     
+    async def _restart_discovery(self):
+        """Restart the Bluetooth discovery process."""
+        try:
+            from bleak import BleakScanner
+    
+            self.logger.info("Restarting Bluetooth discovery...")
+            await BleakScanner.stop()
+            await asyncio.sleep(1)  # Give time for the stop to complete
+            await BleakScanner.start()
+            self.logger.info("Bluetooth discovery restarted.")
+        except Exception as e:
+            self.logger.error(f"Failed to restart Bluetooth discovery: {e}")
+
     async def _retry_connection(self, delay=10):
-        self.logger.warning(f"Retrying connection to {self.address} after {delay} seconds.")
+        self.logger.info(f"Retrying connection to {self.address} in {delay} seconds...")
         await asyncio.sleep(delay)
         try:
             await self._connect()
         except Exception as e:
-            self.logger.error(f"Failed to reconnect to {self.address}: {e}")
-        async def _get_name(self):
-            """Get device name, which can be parsed for type"""
-            try:
-                name = await self.client.read_gatt_char(self.DEVICE_NAME_UUID)
-                self.name = name.decode('ascii')
-                logging.info(f'Device {self.address} has name: {self.name}')
-            except BleakError:
-                logging.exception(f'Error retrieving device name {self.address}:')
-                self.state = ClientState.DISCONNECTING
-
+            self.logger.error(f"Retry failed for {self.address}: {e}")
+###
+    
     async def _start_listening(self):
         """Register for command response notifications"""
         try:
