@@ -125,20 +125,26 @@ class BluetoothClient:
             except BleakDBusError as e:
                 if "InProgress" in str(e):
                     self.logger.warning(f"Connection already in progress for {self.address}. Retrying later.")
+                    # Try to disconnect if delay is over 30 seconds:
+                    if delay > 30:
+                        self.state = ClientState.DISCONNECTING
                 else:
                     self.logger.error(f"BleakDBusError for {self.address}: {e}")
+                    self.logger.debug(f"BleakDBusError for {self.address}: {e}")
                 retries += 1
                 await asyncio.sleep(delay)
             except Exception as e:
                 self.logger.error(f"Unexpected error connecting to {self.address}: {e}")
+                self.logger.debug(f"BleakDBusError for {self.address}: {e}")
                 retries += 1
                 await asyncio.sleep(delay)
             except BleakDeviceNotFoundError:
                 logging.debug(f'Error connecting to device {self.address}: Not found')
-            except (BleakError, EOFError, asyncio.TimeoutError):
-                logging.exception(f'Error connecting to device {self.address}:')
+            except (BleakError, EOFError, asyncio.TimeoutError) as e:
+                logging.exception(f'Error connecting to device {self.address}')
+                self.logger.debug(f'BleakError for {self.address}: {e}')
                 await asyncio.sleep(1)
-    
+
             # Adjust the delay for the next attempt
             delay = min(delay * 2, max_delay)
     
