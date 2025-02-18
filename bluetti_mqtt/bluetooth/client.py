@@ -15,6 +15,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+
 @unique
 class ClientState(Enum):
     NOT_CONNECTED = auto()
@@ -140,17 +141,17 @@ class BluetoothClient:
                     self.logger.debug(f"{e}")
                 retries += 1
                 await asyncio.sleep(delay)
-            except Exception as e:
-                self.logger.error(f"Unexpected error connecting to {self.address}")
-                self.logger.debug(f"{e}")
-                retries += 1
-                await asyncio.sleep(delay)
             except BleakDeviceNotFoundError:
                 logging.debug(f'Error connecting to device {self.address}: Not found')
             except (BleakError, EOFError, asyncio.TimeoutError) as e:
                 logging.exception(f'Error connecting to device {self.address}')
                 self.logger.debug(f'{e}')
                 await asyncio.sleep(1)
+            except Exception as e:
+                self.logger.error(f"Unexpected error connecting to {self.address}")
+                self.logger.debug(f"{e}")
+                retries += 1
+                await asyncio.sleep(delay)
 
             # Adjust the delay for the next attempt
             delay = min(delay * 2, max_delay)
