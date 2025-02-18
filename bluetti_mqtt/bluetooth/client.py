@@ -94,7 +94,7 @@ class BluetoothClient:
         """Establish connection to the bluetooth device"""
         retries = 0
         delay = 5  # Initial retry delay in seconds
-        max_delay = 600  # Maximum delay of 10 minutes
+        max_delay = 60  # Maximum delay of 1 minute
 
         while retries < self.MAX_RETRIES:
             if self.client.is_connected:
